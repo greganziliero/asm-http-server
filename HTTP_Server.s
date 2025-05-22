@@ -1,6 +1,6 @@
 .intel_syntax noprefix
 
-# Linux Syscall Macros
+# Linux Syscall Macros:
     .equ SYSCALL_READ, 0
     .equ SYSCALL_WRITE, 1
     .equ SYSCALL_OPEN, 2
@@ -12,7 +12,7 @@
     .equ SYSCALL_FORK, 57
     .equ SYSCALL_EXIT, 60
     
-# Linux Constant Macros
+# Linux Constant Macros:
     .equ SOCKET_STREAM, 1
     .equ AF_INET, 2
     .equ SIZE_SOCKETADDR_IN, 16
@@ -23,12 +23,12 @@
     .equ S_IRWXU, 0777
 
 .section .data
-    response
-    .string HTTP1.0 200 OKrnrn
+    response:
+    .string "HTTP/1.0 200 OK\r\n\r\n"
     .equ response_size, .-response-1
 
-    header_buffer
-    .string rnrn
+    header_buffer:
+    .string "\r\n\r\n"
 
 .section .bss
     # Request buffer for reading the HTTP request
@@ -50,8 +50,8 @@
 .section .text
 
 .global _start
-_start
-setup # Opens a socket and sets it up to listen
+_start:
+setup: # Opens a socket and sets it up to listen
 
     # Socket (rdi AF_INET, rsi SOCKET_STREAM, rdx 0)
     mov rax, SYSCALL_SOCKET
@@ -61,7 +61,7 @@ setup # Opens a socket and sets it up to listen
     syscall # Socket
     # Returns file descriptor in rax
 
-    # Bind (rdi file_descriptor, rsi sockadder_in, rdx sockadder_size)
+    # Bind (rdi file_descriptor, rsi *sockadder_in, rdx sockadder_size)
     mov rdi, rax # File descriptor for created file
 
     sub rsp, SIZE_SOCKETADDR_IN            # allocate 16 bytes for sockaddr_in
@@ -78,13 +78,13 @@ setup # Opens a socket and sets it up to listen
 
     # Listen (rdi file_descriptor, rsi backlog)
     # rdi is already set from the last syscall
-    xor rsi, rsi # 0 backlog
+    xor rsi, rsi # 5 backlog
     mov rax, SYSCALL_LISTEN
     syscall # Listen
 
     mov [listening_fd], rdi # Save the file descriptor for later
 
-accept_request # Accepts the communication and forks the process.
+accept_request: # Accepts the communication and forks the process.
                 #  The parent continues and the child processes the request.
 
     # Accept(rdi file_descriptor, rsi NULL, rdx NULL)
@@ -105,7 +105,7 @@ accept_request # Accepts the communication and forks the process.
     cmp rax, 0 # Checks if parent
     jne close_accept # Parent goes back to accept new request
 
-request_processing # Child continues to process the request.
+request_processing: # Child continues to process the request.
 
     mov rdi, [listening_fd] # Get the file descriptor for the listening file
 
@@ -114,20 +114,20 @@ request_processing # Child continues to process the request.
     mov rax, SYSCALL_CLOSE
     syscall # Close
 
-    # Read(rdi file_descriptor, rsi buffer, rdx read_size)
+    # Read(rdi file_descriptor, rsi *buffer, rdx read_size)
     mov rdi, [accepted_fd] # Grab file descriptor from stack
     lea rsi, request_buffer # Set pointer to buffer
     mov rax, SYSCALL_READ
     mov rdx, rb_size # Max read size
     syscall # Read
 
-    # Simple parser. The expected read value is POST path other_stuff
-    # rnrnPOST_TEXT.
+    # Simple parser. The expected read value is "POST path other_stuff
+    # \r\n\r\nPOST_TEXT".
     # This algorithm extracts the path between the first and second
-    # space. It takes rsi as the buffer. Returns a buffer in rdi.
-    # It also extracts the POST_TEXT and saves it to a buffer in rdx
+    # space. It takes rsi as the *buffer. Returns a *buffer in rdi.
+    # It also extracts the POST_TEXT and saves it to a buffer in *rdx
 
-    parse_start  
+    parse_start:  
         # Look for a space in the request 
         lea rdi, request_buffer
         mov sil, 32
@@ -140,7 +140,7 @@ request_processing # Child continues to process the request.
         call copy_string
 
         # Got the path, now needs to read the text
-        # First look for the rnrn
+        # First look for the \r\n\r\n
         mov rdi, rax
         lea rsi, header_buffer
         call search_for_string
@@ -160,18 +160,18 @@ request_processing # Child continues to process the request.
     je POST
     jmp GET
 
-    POST
+    POST:
         # Create the desired file
-        # Open(rdi path, rsi flag, rdx mode)
+        # Open(rdi *path, rsi flag, rdx mode)
         lea rdi, path_buffer
-        mov rsi, O_WRONLY  O_CREAT
+        mov rsi, O_WRONLY | O_CREAT
         mov rdx, S_IRWXU # All permissions
         mov rax, SYSCALL_OPEN
         syscall # Open
         # Returns file descriptor in rax
 
         # Write to the created file
-        # Write(rdi file_descriptor, rsi buffer, rdx write_size)
+        # Write(rdi file_descriptor, rsi *buffer, rdx write_size)
         mov rdi, rax
         lea rsi, file_buffer
         pop rdx
@@ -184,9 +184,9 @@ request_processing # Child continues to process the request.
         mov rax, SYSCALL_CLOSE
         syscall # Close
 
-        # Send
-        # HTTP1.0 200 OKrnrn
-        # Write(rdi file_descriptor, rsi buffer, rdx write_size)
+        # Send:
+        # HTTP/1.0 200 OK\r\n\r\n
+        # Write(rdi file_descriptor, rsi *buffer, rdx write_size)
         mov rdi, [accepted_fd] # File descriptor
         lea rsi, response # Stored message
         mov rdx, response_size # Fixed size
@@ -194,8 +194,8 @@ request_processing # Child continues to process the request.
         syscall # Write
         jmp exit
 
-    GET
-        # Open(rdi path, rsi flag, rdx mode)
+    GET:
+        # Open(rdi *path, rsi flag, rdx mode)
         lea rdi, path_buffer 
         mov rsi, O_RDONLY
         xor rdx, rdx # 0
@@ -203,7 +203,7 @@ request_processing # Child continues to process the request.
         syscall # Open
         # Returns file descriptor in rax
 
-        # Read(rdi file_descriptor, rsi buffer, rdx read_size)
+        # Read(rdi file_descriptor, rsi *buffer, rdx read_size)
         mov rdi, rax # File descriptor for open file
         lea rsi, file_buffer # Stack buffer
         mov rdx, fb_size # Max read size
@@ -218,9 +218,9 @@ request_processing # Child continues to process the request.
         mov rax, SYSCALL_CLOSE
         syscall # Close
 
-        # Send
-        # HTTP1.0 200 OKrnrn
-        # Write(rdi file_descriptor, rsi buffer, rdx write_size)
+        # Send:
+        # HTTP/1.0 200 OK\r\n\r\n
+        # Write(rdi file_descriptor, rsi *buffer, rdx write_size)
         mov rdi, [accepted_fd] # File descriptor
         lea rsi, response # Stored message
         mov rdx, response_size # Fixed size
@@ -228,7 +228,7 @@ request_processing # Child continues to process the request.
         syscall # Write
 
         # Write again, the read file this time
-        # Write(rdi file_descriptor, rsi buffer, rdx write_size)
+        # Write(rdi file_descriptor, rsi *buffer, rdx write_size)
         # rdi is already set, same as last time
         pop rdx # Saved read size
         lea rsi, file_buffer # Read from file
@@ -241,14 +241,14 @@ request_processing # Child continues to process the request.
         syscall # Close
 
     # Zeros out everything to exit
-    exit
+    exit:
     mov rax, SYSCALL_EXIT # Exit syscall
     mov rdi, 0
     mov rsi, 0
     mov rdx, 0
     syscall # EXIT
 
-close_accept # The child deals with the request, 
+close_accept: # The child deals with the request, 
               # so the parent closes the current request.
     # Close(rdi file_descriptor)
     # rdi is already set
@@ -257,37 +257,37 @@ close_accept # The child deals with the request,
     jmp accept_request # Return to accept the next request
 
 # Function that searches for a character in a string
-# Input rdi string buffer and rsi stop character
-# Output rax string buffer after the character 
+# Input: rdi string buffer and rsi stop character
+# Output: rax string buffer after the character 
 .type search_string, @function
-search_string
+search_string:
     push rdi
     xor rax, rax
 
-    1 # Loop
+    1: # Loop
     mov al, BYTE PTR [rdi] # Take a character from the buffer
     inc rdi
     cmp al, sil # Look for character
     je 2f # Found the chracter
     jmp 1b
 
-    2 # Done
+    2: # Done
     mov rax, rdi
     pop rdi
     ret
 
 
 # Copies the string until a stop character is found
-# Input rdi string buffer, rsi copied string buffer,
+# Input: rdi string buffer, rsi copied string buffer,
 # rdx stop character.
-# Output rax moved input string buffer
+# Output: rax moved input string buffer
 .type copy_string, @function
-copy_string
+copy_string:
     push rdi
     push rsi
     xor rax, rax
 
-    1 # Loop
+    1: # Loop
     mov al, BYTE PTR [rdi] # Takes a character from the buffer
     cmp al, dl # Checks for stop character
     je 2f # Found the character, end
@@ -296,7 +296,7 @@ copy_string
     inc rdi
     jmp 1b # Copy the next character
 
-    2
+    2:
     mov BYTE PTR [rsi], 0  # Add null terminator
     mov rax, rdi # Moved source string
     pop rsi
@@ -304,20 +304,20 @@ copy_string
     ret
 
 # Function that searches for a target string in a string
-# Input rdi string buffer and rsi searched string
-# Output rax string buffer after the character 
+# Input: rdi string buffer and rsi searched string
+# Output: rax string buffer after the character 
 .type search_for_string, @function
-search_for_string
+search_for_string:
     push rdi
     push rbx
     push rdx
     xor rax, rax
     xor rdx, rdx
 
-    1 # Reset target buffer
+    1: # Reset target buffer
     mov rbx, rsi
 
-    2 # Next character
+    2: # Next character
     mov al, BYTE PTR [rdi] # Takes a character from the buffer
     mov dl, BYTE PTR [rbx] # Takes a character from the target buffer
     cmp dl, 0
@@ -328,7 +328,7 @@ search_for_string
     je 2b # Characters match, look for the next character
     jmp 1b # Characters don't match, reset the target string
 
-    3 # Found the string, end
+    3: # Found the string, end
     mov rax, rdi # Moved source string
 
     pop rdx

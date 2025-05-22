@@ -1,0 +1,22 @@
+# Simple HTTP Server in Assembly
+
+Simple HTTP server written in Intel syntax assembly for the GAS compiler.  
+Designed for Linux.  
+Based on the pwn.college HTTP lessons.
+
+Supports POST and GET instructions.  
+**Note:** Only partial parsing of HTTP requests is performed; not fully compliant.
+
+## Build
+
+```bash
+gcc -nostdlib -o exe HTTP_Server.s
+```
+
+## Tested with
+```bash
+gcc (GCC) 13.3.0
+```
+
+## License
+Feel free to use this code as you wish. No guarantee it works perfectly.
